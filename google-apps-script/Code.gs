@@ -18,7 +18,7 @@ var CONFIG = {
   // Set to true if you want separate subfolders created inside the folder for each batch (e.g. "Batch - 2024")
   CREATE_BATCH_SUBFOLDERS: true,
 
-  // Maximum allowed file size in MB
+  // Maximum allowed file size in MB  
   MAX_FILE_SIZE_MB: 25,
 
   // Allowed file extensions
@@ -34,9 +34,17 @@ function doOptions(e) {
 }
 
 /**
- * Serves GET requests (e.g. health check or standalone web page).
+ * Serves GET requests.
+ * ?action=getSubmissions  → returns all logged rows from the tracking sheet
+ * (no action)             → health check
  */
 function doGet(e) {
+  var action = e && e.parameter && e.parameter.action;
+
+  if (action === "getSubmissions") {
+    return getSubmissionsResponse();
+  }
+
   var output = {
     status: "online",
     message: "Diploma Practical Submission API is operational.",
@@ -45,6 +53,47 @@ function doGet(e) {
   };
   return ContentService.createTextOutput(JSON.stringify(output))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Returns all submission rows from the tracking sheet as JSON.
+ */
+function getSubmissionsResponse() {
+  try {
+    // Reuse the existing sheet-finder (pass the root folder)
+    var rootFolder = DriveApp.getFolderById(CONFIG.TARGET_FOLDER_ID.trim());
+    var sheet = getSubmissionSheet(rootFolder);
+    var data = sheet.getDataRange().getValues();
+
+    if (data.length <= 1) {
+      // Only headers or empty
+      return ContentService.createTextOutput(JSON.stringify({ success: true, submissions: [] }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var headers = data[0]; // ["Timestamp","Batch","Reference Number","NIC Number","Student Full Name","Saved File Name","Original File Name","File Size","Drive File Link","Drive File ID"]
+    var rows = data.slice(1).map(function(row) {
+      return {
+        timestamp:    String(row[0] || ""),
+        batch:        String(row[1] || ""),
+        refNumber:    String(row[2] || ""),
+        nic:          String(row[3] || ""),
+        name:         String(row[4] || ""),
+        savedFile:    String(row[5] || ""),
+        originalFile: String(row[6] || ""),
+        fileSize:     String(row[7] || ""),
+        fileUrl:      String(row[8] || ""),
+        fileId:       String(row[9] || "")
+      };
+    }).reverse(); // newest first
+
+    return ContentService.createTextOutput(JSON.stringify({ success: true, submissions: rows }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 /**

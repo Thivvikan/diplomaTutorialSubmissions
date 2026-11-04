@@ -16,7 +16,8 @@ import {
   RotateCcw,
   FolderCheck,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Shield,
 } from 'lucide-react';
 
 const TARGET_DRIVE_FOLDER_ID = "1OcWe0x5L9-RVZt_Edi0e2s3kmlL8UTy0";
@@ -29,12 +30,17 @@ const MAX_FILE_SIZE_MB = 25;
 const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby0gLNmkDZRvCC2HLblBudoo1N0EpTzoRw6LOJ1vdLE81YO5qI_l93HeKFsp3lDqOrQug/exec";
 
 export default function App() {
+  // Detect admin mode via URL query param (e.g., ?admin=1)
+  const urlParams = new URLSearchParams(window.location.search);
+  const isAdmin = urlParams.get('admin') === '1';
+
   // Form State
   const [studentName, setStudentName] = useState('');
   const [studentBatch, setStudentBatch] = useState('');
   const [studentRef, setStudentRef] = useState('');
   const [studentNic, setStudentNic] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
+  // Duplicate admin detection block removed
 
   // UI & Network State
   const [isDragOver, setIsDragOver] = useState(false);
@@ -49,6 +55,21 @@ export default function App() {
     return localStorage.getItem('diploma_apps_script_url') || DEFAULT_APPS_SCRIPT_URL;
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // Admin State
+  const [folderLink, setFolderLink] = useState(TARGET_DRIVE_FOLDER_URL);
+  const [adminBatches, setAdminBatches] = useState(() => {
+    const stored = localStorage.getItem('adminBatches');
+    return stored ? JSON.parse(stored) : [...DEFAULT_BATCHES];
+  });
+  const [newBatch, setNewBatch] = useState('');
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  // Admin folder link state (editable by admin)
+  const [adminFolderLink, setAdminFolderLink] = useState(() => localStorage.getItem('adminFolderLink') || TARGET_DRIVE_FOLDER_URL);
+  // Helper to persist admin settings
+  const persistAdminSettings = (link, batches) => {
+    localStorage.setItem('adminFolderLink', link);
+    localStorage.setItem('adminBatches', JSON.stringify(batches));
+  };
 
   const fileInputRef = useRef(null);
 
@@ -258,24 +279,29 @@ export default function App() {
 
         <div className="nav-actions">
           <a
-            href={TARGET_DRIVE_FOLDER_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/?admin=1"
             className="drive-link-btn"
-            title="Open Target Drive Folder"
+            title="Open Admin Portal"
           >
-            <FolderCheck size={16} />
-            <span>Open Drive Folder</span>
-            <ExternalLink size={13} />
+            <Shield size={16} />
+            <span>Admin Portal</span>
+            <ArrowRight size={13} />
           </a>
 
-          <button
-            className="settings-btn"
-            onClick={() => setIsSettingsOpen(true)}
-            title="Configure Apps Script Endpoint"
-          >
-            <Settings size={18} />
-          </button>
+          {isAdmin && (
+            <a
+              href={TARGET_DRIVE_FOLDER_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="drive-link-btn"
+              title="Open Target Drive Folder"
+            >
+              <FolderCheck size={16} />
+              <span>Open Drive Folder</span>
+              <ExternalLink size={13} />
+            </a>
+          )}
+
         </div>
       </header>
 
@@ -294,16 +320,6 @@ export default function App() {
                 <p className="card-subtitle">
                   Upload your practical assignment directly to the instructor's Google Drive storage.
                 </p>
-              </div>
-
-              {/* Destination Pill */}
-              <div className="destination-pill">
-                <FolderCheck size={15} style={{ color: '#38bdf8' }} />
-                <span>Target Folder: </span>
-                <a href={TARGET_DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">
-                  1OcWe0x5L9-RVZt_Edi0e2s3kmlL8UTy0
-                  <ExternalLink size={12} />
-                </a>
               </div>
 
               {/* Error Message */}
@@ -331,7 +347,7 @@ export default function App() {
                       type="text"
                       className="text-input"
                       required
-                      placeholder="e.g. Kasun Chamara Perera"
+                      placeholder="Kasan Samar Perera"
                       value={studentName}
                       onChange={(e) => setStudentName(e.target.value)}
                     />
@@ -349,30 +365,23 @@ export default function App() {
                       <span className="input-leading-icon">
                         <Layers size={18} />
                       </span>
-                      <input
+                      <select
                         id="batch"
-                        type="text"
                         className="text-input"
                         required
-                        placeholder="e.g. 2024 / Batch 02"
                         value={studentBatch}
                         onChange={(e) => setStudentBatch(e.target.value)}
-                      />
-                    </div>
-                    {/* Quick Selection Pills */}
-                    <div className="batch-pills">
-                      {DEFAULT_BATCHES.map((b) => (
-                        <button
-                          key={b}
-                          type="button"
-                          className={`batch-pill-btn ${studentBatch === b ? 'active' : ''}`}
-                          onClick={() => setStudentBatch(b)}
-                        >
-                          {b}
-                        </button>
-                      ))}
+                      >
+                        <option value="" disabled>Select Batch</option>
+                        {adminBatches.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
+  
 
                   <div className="form-group">
                     <label className="form-label" htmlFor="refNo">
@@ -387,7 +396,9 @@ export default function App() {
                         type="text"
                         className="text-input"
                         required
-                        placeholder="e.g. DIP/2024/048"
+                        placeholder="00123456"
+                        pattern="\d{8}"
+                        title="Reference number must be 8 digits (e.g. 00123456)"
                         value={studentRef}
                         onChange={(e) => setStudentRef(e.target.value)}
                       />
@@ -395,6 +406,7 @@ export default function App() {
                     <div className="input-hint">Your diploma student identification index.</div>
                   </div>
                 </div>
+
 
                 {/* NIC Number */}
                 <div className="form-group">
@@ -590,7 +602,9 @@ export default function App() {
         </div>
 
         <footer className="footer-bar">
-          Connected to Google Drive Folder: <code>{TARGET_DRIVE_FOLDER_ID}</code> &bull; Diploma Practical System
+          {isAdmin && (
+            <>Connected to Google Drive Folder: <code>{TARGET_DRIVE_FOLDER_ID}</code> &bull; Diploma Practical System</>
+          )}
         </footer>
       </main>
 
@@ -640,6 +654,50 @@ export default function App() {
               Save & Close
             </button>
           </div>
+        {/* Admin Settings Modal */}
+        {isAdminModalOpen && (
+          <div className="modal-overlay" onClick={() => setIsAdminModalOpen(false)}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div className="modal-title">Admin Portal</div>
+                <button className="modal-close-btn" onClick={() => setIsAdminModalOpen(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              {/* Folder Link Edit */}
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label">Target Drive Folder URL</label>
+                <input
+                  type="text"
+                  className="text-input"
+                  value={adminFolderLink}
+                  onChange={e => setAdminFolderLink(e.target.value)}
+                />
+                <div className="input-hint">Enter the Google Drive folder URL where submissions are saved.</div>
+              </div>
+              {/* Batch Management */}
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label">Manage Batches (comma separated)</label>
+                <input
+                  type="text"
+                  className="text-input"
+                  value={adminBatches.join(', ')}
+                  onChange={e => setAdminBatches(e.target.value.split(',').map(b => b.trim()))}
+                />
+                <div className="input-hint">Add or remove batches; they will appear in the dropdown.</div>
+              </div>
+              <button
+                className="submit-action-btn"
+                onClick={() => {
+                  persistAdminSettings(adminFolderLink, adminBatches);
+                  setIsAdminModalOpen(false);
+                }}
+              >
+                Save Settings
+              </button>
+            </div>
+          </div>
+        )}
         </div>
       )}
     </div>
